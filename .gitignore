@@ -3,3 +3,7 @@
 /core/target/
 /k8dns-runtime/target/
 /example/target/
+benchmarks/target/
+project/project/target/
+project/target/
+target/
