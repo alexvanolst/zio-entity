@@ -3,7 +3,7 @@ package zio.entity.core
 import izumi.reflect.Tag
 import zio.entity.core.Combinators.ImpossibleTransitionException
 import zio.entity.data.Versioned
-import zio.{Chunk, IO, NonEmptyChunk, Ref, Task, UIO, ZIO}
+import zio.{Chunk, IO, NonEmptyChunk, Ref, Task, UIO, ZIO, ZLayer}
 
 case class KeyedAlgebraCombinators[Key: Tag, State: Tag, Event: Tag, Reject](
   key: Key,
@@ -14,6 +14,8 @@ case class KeyedAlgebraCombinators[Key: Tag, State: Tag, Event: Tag, Reject](
 ) extends Combinators[State, Event, Reject] {
   import algebraCombinatorConfig._
   type Offset = Long
+
+  val taggingLayer = ZLayer.succeed(tagging)
 
   override def read: IO[Reject, State] = {
     val result = state.get.flatMap {
@@ -38,7 +40,7 @@ case class KeyedAlgebraCombinators[Key: Tag, State: Tag, Event: Tag, Reject](
       currentState <- read
       newState     <- userBehaviour.init(currentState).run(events).mapError(errorHandler)
       _            <- state.set(Some(newState))
-      _            <- eventJournal.append(key, offset, events).mapError(errorHandler).provide(tagging)
+      _            <- eventJournal.append(key, offset, events).mapError(errorHandler).provide(taggingLayer)
       _            <- snapshotting.snapshot(key, Versioned(offset, currentState), Versioned(offset + events.size, newState)).mapError(errorHandler)
       _            <- eventJournalOffsetStore.setValue(key, offset + events.size).mapError(errorHandler)
     } yield ()
@@ -46,7 +48,7 @@ case class KeyedAlgebraCombinators[Key: Tag, State: Tag, Event: Tag, Reject](
 
   override def reject[A](r: Reject): IO[Reject, A] = IO.fail(r)
 
-  private def getOffset: IO[Reject, Offset] = eventJournalOffsetStore.getValue(key).bimap(errorHandler, _.getOrElse(0L))
+  private def getOffset: IO[Reject, Offset] = eventJournalOffsetStore.getValue(key).mapBoth(errorHandler, _.getOrElse(0L))
 
   private def recover: IO[Reject, State] = {
     snapshotting.load(key).mapError(errorHandler).flatMap { versionedStateMaybe =>
@@ -62,10 +64,10 @@ case class KeyedAlgebraCombinators[Key: Tag, State: Tag, Event: Tag, Reject](
           val foldBehaviour = userBehaviour.init(readStateFromSnapshot)
           eventJournal
             .read(key, offset)
-            .foldWhileM(readStateFromSnapshot -> offset) { case (_, foldedOffset) => foldedOffset == offsetValue } { case ((state, _), entityEvent) =>
+            .runFoldWhileZIO(readStateFromSnapshot -> offset) { case (_, foldedOffset) => foldedOffset == offsetValue } { case ((state, _), entityEvent) =>
               foldBehaviour
                 .reduce(state, entityEvent.payload)
-                .bimap(
+                .mapBoth(
                   {
                     case Fold.ImpossibleException => ImpossibleTransitionException(state, entityEvent)
                     case other                    => other
@@ -75,7 +77,7 @@ case class KeyedAlgebraCombinators[Key: Tag, State: Tag, Event: Tag, Reject](
                   }
                 )
             }
-            .bimap(errorHandler, _._1)
+            .mapBoth(errorHandler, _._1)
 
         case _ => IO.succeed(readStateFromSnapshot)
 
@@ -113,7 +115,7 @@ final case class Fold[State, Event](initial: State, reduce: (State, Event) => Ta
   def contramap[Y](f: Y => Event): Fold[State, Y] = Fold(initial, (a, c) => reduce(a, f(c)))
 
   def run(gb: Chunk[Event]): Task[State] =
-    gb.foldM(initial)(reduce)
+    gb.foldZIO(initial)(reduce)
 
   def focus[B](get: State => B)(set: (State, B) => State): Fold[B, Event] =
     Fold(get(initial), (s, e) => reduce(set(initial, s), e).map(get))
@@ -125,7 +127,7 @@ final case class Fold[State, Event](initial: State, reduce: (State, Event) => Ta
 object Fold {
   object ImpossibleException extends RuntimeException
   // TODO: add proper log
-  val impossible: ZIO[Any, Throwable, Nothing] = Task.effectTotal(println("Impossible state exception")) *> Task.fail(ImpossibleException)
+  val impossible: ZIO[Any, Throwable, Nothing] = Task.succeed(println("Impossible state exception")) *> Task.fail(ImpossibleException)
   def count[A]: Fold[Long, A] =
     Fold(0L, (c, _) => Task.succeed(c + 1L))
 }

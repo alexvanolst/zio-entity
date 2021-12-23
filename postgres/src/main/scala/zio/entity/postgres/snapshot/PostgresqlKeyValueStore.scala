@@ -60,10 +60,10 @@ object PostgresqlKeyValueStore {
 
   def make[Key: SchemaEncoder: Tag, Value: SchemaCodec: Tag](
     tableName: String
-  ): ZLayer[Has[Transactor[Task]], Throwable, Has[KeyValueStore[Key, Value]]] = {
-    ZIO.accessM[Has[Transactor[Task]]] { lay =>
+  ): ZLayer[Transactor[Task], Throwable, KeyValueStore[Key, Value]] = {
+    ZIO.environmentWithZIO[Transactor[Task]] { lay =>
       val xa = lay.get
-      createTable(tableName, xa) *> ZIO.effect(new PostgresqlKeyValueStore[Key, Value](xa, tableName))
+      createTable(tableName, xa) *> ZIO.attempt(new PostgresqlKeyValueStore[Key, Value](xa, tableName))
     }
   }.toLayer
 }
@@ -72,15 +72,15 @@ object PostgresTransact {
 
   def transact(url: String, user: String, password: String): ZManaged[Any, Throwable, Transactor[Task]] = {
     for {
-      runtime <- ZIO.runtime[Any].toManaged_
+      runtime <- ZIO.runtime[Any].toManaged
       hikari <- HikariTransactor
         .newHikariTransactor[Task](
           "org.postgresql.Driver",
           url,
           user,
           password,
-          runtime.platform.executor.asEC,
-          Blocker.liftExecutionContext(runtime.platform.executor.asEC)
+          runtime.platform.executor.asExecutionContext,
+          Blocker.liftExecutionContext(runtime.platform.executor.asExecutionContext)
         )
         .toManagedZIO
     } yield hikari

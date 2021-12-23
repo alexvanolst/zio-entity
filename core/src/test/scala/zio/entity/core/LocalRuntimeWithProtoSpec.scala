@@ -1,31 +1,30 @@
 package zio.entity.core
 
-import zio.clock.Clock
-import zio.duration.durationInt
+import zio.{Clock, IO, Ref, UIO, ZLayer, durationInt}
 import zio.entity.annotations.Id
 import zio.entity.core.Fold.impossible
 import zio.entity.data.Tagging.Const
 import zio.entity.data.{ConsumerId, EntityProtocol, EventTag, Tagging}
 import zio.entity.macros.RpcMacro
 import zio.entity.readside.ReadSideParams
-import zio.entity.test.TestEntityRuntime._
+import zio.entity.test.TestEntityRuntime.{testEntity, _}
 import zio.entity.test.TestMemoryStores
 import zio.test.Assertion.equalTo
-import zio.test.environment.TestEnvironment
-import zio.test.{assert, DefaultRunnableSpec, ZSpec}
-import zio.{IO, Ref, UIO}
+import zio.test.{Live, TestClock, TestEnvironment, ZIOSpec, ZIOSpecDefault, ZSpec, assert}
 
-object LocalRuntimeWithProtoSpec extends DefaultRunnableSpec {
+object LocalRuntimeWithProtoSpec extends ZIOSpec[Entity[String, Counter, Int, CountEvent, String] with TestEntity[String, Counter, Int, CountEvent, String]] {
 
   import CounterEntity.counterProtocol
-  private val layer = Clock.any and TestMemoryStores.make[String, CountEvent, Int](50.millis) to
-    testEntity(
+
+  override val layer: ZLayer[Any, Throwable, Entity[String, Counter, Int, CountEvent, String] with TestEntity[String, Counter, Int, CountEvent, String]] =
+    zio.ZEnv.live  >+> TestMemoryStores.make[String, CountEvent, Int](50.millis) >>> testEntity(
       CounterEntity.tagging,
       EventSourcedBehaviour[Counter, Int, CountEvent, String](new CounterCommandHandler(_), CounterEntity.eventHandlerLogic, _.getMessage)
     )
 
+
   override def spec: ZSpec[TestEnvironment, Any] = suite("An entity built with LocalRuntimeWithProto")(
-    testM("receives commands, produces events and updates state") {
+    test("receives commands, produces events and updates state") {
       (for {
         (counter, probe)     <- testEntityWithProbe[String, Counter, Int, CountEvent, String]
         res                  <- counter("key").increase(3)
@@ -43,7 +42,7 @@ object LocalRuntimeWithProtoSpec extends DefaultRunnableSpec {
         assert(fromState)(equalTo(1))
       }).provideSomeLayer[TestEnvironment](layer)
     },
-    testM("Read side processing processes work") {
+    test("Read side processing processes work") {
       (for {
         (counter, probe) <- testEntityWithProbe[String, Counter, Int, CountEvent, String]
         state            <- Ref.make(0)

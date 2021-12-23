@@ -30,8 +30,8 @@ class CommittableJournalStore[O, K, E](offsetStore: KeyValueStore[TagConsumer, O
   ): ZStream[R, Throwable, Committable[JournalEntry[O, K, E]]] = {
     val tagConsumerId = TagConsumer(tag, consumerId)
     stream.Stream
-      .fromEffect(Task.unit)
-      .mapM { _ =>
+      .fromZIO(Task.unit)
+      .mapZIO { _ =>
         offsetStore.getValue(tagConsumerId)
       }
       .flatMap(inner)

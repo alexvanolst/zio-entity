@@ -10,7 +10,7 @@ import java.nio.ByteBuffer
 object BoopickleCodec {
   def encoder[A](implicit pickler: Pickler[A]): Encoder[A] = (value: A) => {
     val byteArray = Pickle.intoBytes(value)
-    Task.effect(Chunk.fromByteBuffer(byteArray))
+    Task.attempt(Chunk.fromByteBuffer(byteArray))
   }
   def decoder[A](implicit pickler: Pickler[A]): Decoder[A] =
     (bits: Chunk[Byte]) =>

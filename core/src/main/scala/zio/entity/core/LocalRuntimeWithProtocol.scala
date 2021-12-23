@@ -1,11 +1,11 @@
 package zio.entity.core
 
-import zio.clock.Clock
+import zio.Clock
 import zio.entity.core.journal.CommittableJournalQuery
 import zio.entity.data.{CommandResult, EntityProtocol, Tagging}
 import zio.entity.readside.{KillSwitch, ReadSideParams, ReadSideProcessing, ReadSideProcessor}
 import zio.stream.ZStream
-import zio.{Chunk, Has, Queue, Ref, Tag, Task, UIO, ZIO}
+import zio.{Chunk, Queue, Ref, Tag, Task, UIO, ZIO}
 
 // TODO we need a queue by key in order to be a perfect model
 object LocalRuntimeWithProtocol {
@@ -16,9 +16,9 @@ object LocalRuntimeWithProtocol {
     eventSourcedBehaviour: EventSourcedBehaviour[Algebra, State, Event, Reject]
   )(implicit
     protocol: EntityProtocol[Algebra, Reject]
-  ): ZIO[Clock with Has[Stores[Key, Event, State]], Throwable, Entity[Key, Algebra, State, Event, Reject]] = {
+  ): ZIO[Clock with Stores[Key, Event, State], Throwable, Entity[Key, Algebra, State, Event, Reject]] = {
     for {
-      clock          <- ZIO.service[Clock.Service]
+      clock          <- ZIO.service[Clock]
       stores         <- ZIO.service[Stores[Key, Event, State]]
       combinatorsMap <- Ref.make[Map[Key, UIO[Combinators[State, Event, Reject]]]](Map.empty)
       combinators = AlgebraCombinatorConfig[Key, State, Event](
@@ -35,7 +35,7 @@ object LocalRuntimeWithProtocol {
     eventSourcedBehaviour: EventSourcedBehaviour[Algebra, State, Event, Reject],
     algebraCombinatorConfig: AlgebraCombinatorConfig[Key, State, Event], //default combinator that tracks events and states
     combinatorMap: Ref[Map[Key, UIO[Combinators[State, Event, Reject]]]],
-    clock: Clock.Service,
+    clock: Clock,
     journalQuery: CommittableJournalQuery[Long, Key, Event]
   )(implicit protocol: EntityProtocol[Algebra, Reject]): Task[Entity[Key, Algebra, State, Event, Reject]] = {
     val errorHandler: Throwable => Reject = eventSourcedBehaviour.errorHandler
@@ -46,7 +46,7 @@ object LocalRuntimeWithProtocol {
       queue <- Queue.unbounded[(Key, Chunk[Byte], zio.Promise[Throwable, CommandResult])]
       _ <- ZStream
         .fromQueue(queue)
-        .mapMPartitioned({ case (key, _, _) => key }, 32) { message =>
+        .mapZIOPartitioned({ case (key, _, _) => key }, 32) { message =>
           val (key, bytes, promise) = message
           val algebraCombinators: UIO[Combinators[State, Event, Reject]] = for {
             cache <- combinatorMap.get

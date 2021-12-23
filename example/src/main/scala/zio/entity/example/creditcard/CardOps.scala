@@ -3,7 +3,7 @@ package zio.entity.example.creditcard
 import zio.entity.example.creditcard.CardEntity.CardEntity
 import zio.entity.example.ledger.LedgerEntity.LedgerEntity
 import zio.entity.example.{Amount, LedgerId, Lock, LockId, Opened}
-import zio.{Has, IO, ZIO, ZLayer}
+import zio.{IO, ZIO, ZLayer}
 
 import java.util.UUID
 
@@ -18,18 +18,18 @@ trait CardOps {
 
 object CardOps {
 
-  def open(name: String, ledgerId: LedgerId): ZIO[Has[CardOps], CardError, CardId] = ZIO.accessM[Has[CardOps]](_.get.open(name, ledgerId))
+  def open(name: String, ledgerId: LedgerId): ZIO[CardOps, CardError, CardId] = ZIO.environmentWithZIO[CardOps](_.get.open(name, ledgerId))
 
-  def authAmount(id: CardId, reason: String, amount: Amount): ZIO[Has[CardOps], CardError, Option[LockId]] =
-    ZIO.accessM[Has[CardOps]](_.get.authAmount(id, reason, amount))
+  def authAmount(id: CardId, reason: String, amount: Amount): ZIO[CardOps, CardError, Option[LockId]] =
+    ZIO.environmentWithZIO[CardOps](_.get.authAmount(id, reason, amount))
 
-  def authSettlement(id: CardId, lockId: LockId): ZIO[Has[CardOps], CardError, Boolean] = ZIO.accessM(_.get.authSettlement(id, lockId))
+  def authSettlement(id: CardId, lockId: LockId): ZIO[CardOps, CardError, Boolean] = ZIO.environmentWithZIO(_.get.authSettlement(id, lockId))
 
-  def authRelease(id: CardId, lockId: LockId): ZIO[Has[CardOps], CardError, Boolean] = ZIO.accessM(_.get.authRelease(id, lockId))
+  def authRelease(id: CardId, lockId: LockId): ZIO[CardOps, CardError, Boolean] = ZIO.environmentWithZIO(_.get.authRelease(id, lockId))
 
-  def debit(id: CardId, reason: String, amount: Amount): ZIO[Has[CardOps], CardError, Boolean] = ZIO.accessM[Has[CardOps]](_.get.debit(id, reason, amount))
+  def debit(id: CardId, reason: String, amount: Amount): ZIO[CardOps, CardError, Boolean] = ZIO.environmentWithZIO[CardOps](_.get.debit(id, reason, amount))
 
-  val live: ZLayer[Has[CardEntity] with Has[LedgerEntity], Nothing, Has[CardOps]] = (for {
+  val live: ZLayer[CardEntity with LedgerEntity, Nothing, CardOps] = (for {
     ledger <- ZIO.service[LedgerEntity]
     card   <- ZIO.service[CardEntity]
   } yield new CardOps {

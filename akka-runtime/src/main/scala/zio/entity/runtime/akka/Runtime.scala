@@ -6,7 +6,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import izumi.reflect.Tag
-import zio.clock.Clock
+import zio.Clock
 import zio.entity.core._
 import zio.entity.core.journal.CommittableJournalQuery
 import zio.entity.data.{CommandInvocation, CommandResult, EntityProtocol, Tagging}
@@ -14,7 +14,7 @@ import zio.entity.readside.{KillSwitch, ReadSideParams, ReadSideProcessor}
 import zio.entity.runtime.akka.readside.{ActorReadSideProcessing, ReadSideSettings}
 import zio.entity.runtime.akka.serialization.Message
 import zio.stream.ZStream
-import zio.{Chunk, Has, IO, Managed, Task, ZIO, ZLayer}
+import zio.{Chunk, IO, Managed, Task, ZIO, ZLayer}
 
 import scala.concurrent.Future
 
@@ -22,12 +22,12 @@ object Runtime {
 
   case class KeyedCommand(key: String, bytes: Chunk[Byte]) extends Message
 
-  def actorSystemLayer(name: String, confFileName: String = "entity.conf"): ZLayer[Any, Throwable, Has[ActorSystem]] =
+  def actorSystemLayer(name: String, confFileName: String = "entity.conf"): ZLayer[Any, Throwable, ActorSystem] =
     ZLayer.fromManaged(
-      Managed.make(ZIO.effect(ActorSystem(name, ConfigFactory.load(confFileName))))(sys => Task.fromFuture(_ => sys.terminate()).either)
+      Managed.acquireReleaseWith(ZIO.attempt(ActorSystem(name, ConfigFactory.load(confFileName))))(sys => Task.fromFuture(_ => sys.terminate()).either)
     )
 
-  def actorSettings(actorSystemName: String): ZLayer[Any, Throwable, Has[ActorSystem] with Has[ReadSideSettings] with Has[RuntimeSettings]] = {
+  def actorSettings(actorSystemName: String): ZLayer[Any, Throwable, ActorSystem with ReadSideSettings with RuntimeSettings] = {
     val actorSystem = actorSystemLayer(actorSystemName)
     val readSideSettings = actorSystem to ZLayer.fromService(ReadSideSettings.default)
     val runtimeSettings = actorSystem to ZLayer.fromService(RuntimeSettings.default)
@@ -40,7 +40,7 @@ object Runtime {
     eventSourcedBehaviour: EventSourcedBehaviour[Algebra, State, Event, Reject]
   )(implicit
     protocol: EntityProtocol[Algebra, Reject]
-  ): ZIO[Clock with Has[ActorSystem] with Has[RuntimeSettings] with Has[ReadSideSettings] with Has[Stores[Key, Event, State]], Throwable, Entity[
+  ): ZIO[Clock with ActorSystem with RuntimeSettings with ReadSideSettings with Stores[Key, Event, State], Throwable, Entity[
     Key,
     Algebra,
     State,
@@ -49,7 +49,7 @@ object Runtime {
   ]] = {
     for {
       stores           <- ZIO.service[Stores[Key, Event, State]]
-      clock            <- ZIO.service[Clock.Service]
+      clock            <- ZIO.service[Clock]
       readSideSettings <- ZIO.service[ReadSideSettings]
       combinators = AlgebraCombinatorConfig[Key, State, Event](
         stores.offsetStore,
@@ -65,12 +65,12 @@ object Runtime {
     typeName: String,
     eventSourcedBehaviour: EventSourcedBehaviour[Algebra, State, Event, Reject],
     algebraCombinatorConfig: AlgebraCombinatorConfig[Key, State, Event],
-    clock: Clock.Service,
+    clock: Clock,
     committableJournalQuery: CommittableJournalQuery[Long, Key, Event],
     readSideSettings: ReadSideSettings
   )(implicit
     protocol: EntityProtocol[Algebra, Reject]
-  ): ZIO[Has[ActorSystem] with Has[RuntimeSettings], Throwable, Entity[Key, Algebra, State, Event, Reject]] = ZIO.access { layer =>
+  ): ZIO[ActorSystem with RuntimeSettings, Throwable, Entity[Key, Algebra, State, Event, Reject]] = ZIO.access { layer =>
     val system = layer.get[ActorSystem]
     val settings = layer.get[RuntimeSettings]
     val props = ZioEntityActor.props[Key, Algebra, State, Event, Reject](eventSourcedBehaviour, algebraCombinatorConfig)

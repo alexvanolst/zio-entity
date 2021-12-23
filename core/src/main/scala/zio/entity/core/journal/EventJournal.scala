@@ -12,7 +12,6 @@ import zio.{NonEmptyChunk, RIO}
   * @tparam E - event type
   */
 trait EventJournal[K, E] {
-  type HasTagging = Tagging[K]
-  def append(key: K, offset: Long, events: NonEmptyChunk[E]): RIO[HasTagging, Unit]
+  def append(key: K, offset: Long, events: NonEmptyChunk[E]): RIO[Tagging[K], Unit]
   def read(key: K, offset: Long): Stream[Throwable, EntityEvent[K, E]]
 }

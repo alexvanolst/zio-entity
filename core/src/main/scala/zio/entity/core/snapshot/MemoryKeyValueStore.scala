@@ -1,7 +1,7 @@
 package zio.entity.core.snapshot
 
 import zio.entity.data.Versioned
-import zio.{Has, Ref, Tag, Task, UIO, ZIO, ZLayer}
+import zio.{Ref, Tag, Task, UIO, ZIO, ZLayer}
 
 class MemoryKeyValueStore[K, V](internalMap: Ref[Map[K, V]]) extends KeyValueStore[K, V] {
 

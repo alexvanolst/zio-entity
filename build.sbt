@@ -17,14 +17,14 @@ lazy val noPublishSettings = Seq(publish := (()), publishLocal := (()), publishA
 
 val testDeps = Seq(
   "org.scalatest" %% "scalatest" % "3.2.10" % Test,
-  "dev.zio" %% "zio-test-sbt" % zio % Test,
-  "dev.zio" %% "zio-test-magnolia" % zio % Test
+  "dev.zio" %% "zio-test-sbt" % zioVersion % Test,
+  "dev.zio" %% "zio-test-magnolia" % zioVersion % Test
 )
 
 val allDeps = Seq(
-  "dev.zio" %% "zio" % zio,
-  "dev.zio" %% "zio-streams" % zio,
-  "dev.zio" %% "zio-test" % zio,
+  "dev.zio" %% "zio" % zioVersion,
+  "dev.zio" %% "zio-streams" % zioVersion,
+  "dev.zio" %% "zio-test" % zioVersion,
   "io.suzaku" %% "boopickle" % "1.4.0",
   "org.scala-lang" % "scala-reflect" % "2.13.7",
   "com.thesamet.scalapb" %% "scalapb-runtime" % scalapb.compiler.Version.scalapbVersion
@@ -38,7 +38,7 @@ val postgresDeps = Seq(
   "org.tpolecat" %% "doobie-core" % "0.13.4",
   "org.tpolecat" %% "doobie-hikari" % "0.13.4",
   "org.tpolecat" %% "doobie-postgres" % "0.13.4",
-  "dev.zio" %% "zio-interop-cats" % "2.5.1.0",
+  "dev.zio" %% "zio-interop-cats" % zioInteropCatsVersion,
   "ch.qos.logback" % "logback-classic" % "1.2.9" % Test,
   "org.testcontainers" % "postgresql" % "1.16.2" % Test
 ) ++ testDeps

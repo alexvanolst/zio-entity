@@ -8,7 +8,7 @@ import zio.entity.data.{EntityProtocol, EventTag, Tagging}
 import zio.entity.example.Amount.Currency
 import zio.entity.example.{Amount, LedgerCredited, LedgerDebited, LedgerEvent, LedgerId, LedgerLockAdded, LedgerLockReleased, LedgerLockSettled, Lock, LockId}
 import zio.entity.macros.RpcMacro
-import zio.{Has, IO, UIO, ZIO}
+import zio.{IO, UIO, ZIO}
 
 trait Ledger {
 
@@ -122,7 +122,7 @@ object LedgerEntity {
 
   type LedgerEntity = Entity[LedgerId, Ledger, LedgerState, LedgerEvent, LedgerError]
 
-  def apply(id: LedgerId): ZIO[Has[LedgerEntity], Nothing, Ledger] = ZIO.access[Has[LedgerEntity]](_.get.apply(id))
+  def apply(id: LedgerId): ZIO[LedgerEntity, Nothing, Ledger] = ZIO.access[LedgerEntity](_.get.apply(id))
 }
 
 case object UnknownLedgerError extends LedgerError

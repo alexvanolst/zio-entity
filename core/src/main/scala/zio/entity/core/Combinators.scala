@@ -13,8 +13,8 @@ trait Combinators[+State, -Event, Reject] {
 
 object Combinators {
 
-  type EIO[State, Event, Reject, Result] = ZIO[Has[Combinators[State, Event, Reject]], Reject, Result]
-  type ETask[State, Event, Result] = ZIO[Has[Combinators[State, Event, Throwable]], Throwable, Result]
+  type EIO[State, Event, Reject, Result] = ZIO[Combinators[State, Event, Reject], Reject, Result]
+  type ETask[State, Event, Result] = ZIO[Combinators[State, Event, Throwable], Throwable, Result]
 
   def combinators[Service]: ServiceWithPartiallyApplied[Service] =
     new ServiceWithPartiallyApplied[Service]
@@ -22,7 +22,7 @@ object Combinators {
   case class ImpossibleTransitionException[Key, Event, State](state: State, eventPayload: EntityEvent[Key, Event])
       extends RuntimeException(s"Impossible transition from state $state with event $eventPayload")
 
-  def clientEmptyCombinator[State: Tag, Event: Tag, Reject: Tag]: ULayer[Has[Combinators[State, Event, Reject]]] =
+  def clientEmptyCombinator[State: Tag, Event: Tag, Reject: Tag]: ULayer[Combinators[State, Event, Reject]] =
     ZLayer.succeed(new Combinators[Nothing, Any, Reject] {
       override def read: IO[Reject, Nothing] = throw new RuntimeException("This is a stub")
 

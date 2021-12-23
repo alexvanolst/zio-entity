@@ -1,7 +1,7 @@
 package zio.entity.runtime.akka
 
-import zio.clock.Clock
-import zio.duration.durationInt
+import zio.{Clock, IO, UIO, ZEnv, ZLayer, durationInt}
+import zio.durationInt
 import zio.entity.annotations.Id
 import zio.entity.core.Entity.entity
 import zio.entity.core.Fold.impossible
@@ -12,15 +12,13 @@ import zio.entity.macros.RpcMacro
 import zio.entity.readside.ReadSideParams
 import zio.test.Assertion.equalTo
 import zio.test.TestAspect.{sequential, timeout}
-import zio.test.environment.TestEnvironment
-import zio.test.{assert, DefaultRunnableSpec, ZSpec}
-import zio.{Has, IO, UIO, ZEnv, ZLayer}
+import zio.test.{TestEnvironment, ZIOSpec, ZIOSpecDefault, ZSpec, assert}
 import CounterEntity._
 
-object RuntimeSpec extends DefaultRunnableSpec {
+object RuntimeSpec extends ZIOSpec[Entity[String, Counter, Int, CountEvent, String]] {
 
-  private val stores: ZLayer[Any, Nothing, Has[Stores[String, CountEvent, Int]]] = Clock.live to MemoryStores.make[String, CountEvent, Int](100.millis, 2)
-  private val layer: ZLayer[ZEnv, Throwable, Has[Entity[String, Counter, Int, CountEvent, String]]] =
+  private val stores: ZLayer[Any, Nothing, Stores[String, CountEvent, Int]] = Clock.live to MemoryStores.make[String, CountEvent, Int](100.millis, 2)
+  override val layer =
     (Clock.live and stores and Runtime.actorSettings("Test")) to Runtime
       .entityLive(
         "Counter",
@@ -30,7 +28,7 @@ object RuntimeSpec extends DefaultRunnableSpec {
       .toLayer
 
   override def spec: ZSpec[TestEnvironment, Any] = suite("An entity")(
-    testM("receives commands and updates state") {
+    test("receives commands and updates state") {
       (for {
         counter              <- entity[String, Counter, Int, CountEvent, String]
         res                  <- counter("key").increase(3)
@@ -46,7 +44,7 @@ object RuntimeSpec extends DefaultRunnableSpec {
         assert(fromState)(equalTo(1))
       }).provideSomeLayer[TestEnvironment](layer)
     },
-    testM("Read side processing processes work") {
+    test("Read side processing processes work") {
       (for {
         counter <- entity[String, Counter, Int, CountEvent, String]
         promise <- zio.Promise.make[Nothing, Int]

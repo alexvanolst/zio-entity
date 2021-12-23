@@ -1,6 +1,6 @@
 package zio.entity.example.storage
 
-import zio.{Has, Ref, Tag, Task, ULayer}
+import zio.{Ref, Tag, Task, ULayer}
 
 import java.time.Instant
 
@@ -15,7 +15,7 @@ trait ExpiringStorage[K, V] {
 
 object MemoryExpiringStorage {
   private case class Value[V](value: V, expireOn: Instant)
-  def make[K: Tag, V: Tag]: ULayer[Has[ExpiringStorage[K, V]]] = (for {
+  def make[K: Tag, V: Tag]: ULayer[ExpiringStorage[K, V]] = (for {
     internal <- Ref.make[Map[K, Value[V]]](Map.empty)
   } yield new ExpiringStorage[K, V] {
     override def insert(key: K, value: V, expireOn: Instant): Task[Unit] = internal.update { oldMap =>

@@ -1,10 +1,10 @@
 package zio.entity.core
 
-import zio.clock.Clock
+import zio.Clock
 import zio.entity.core.journal.CommittableJournalQuery
 import zio.entity.readside.{KillSwitch, ReadSideParams, ReadSideProcessing, ReadSideProcessor}
 import zio.stream.ZStream
-import zio.{Has, IO, Ref, Tag, UIO, ZIO, ZLayer}
+import zio.{IO, Ref, Tag, UIO, ZIO, ZLayer}
 
 object LocalRuntime {
 
@@ -15,7 +15,7 @@ object LocalRuntime {
     algebraCombinatorConfig: AlgebraCombinatorConfig[Key, State, Event], //default combinator that tracks events and states
     committableJournalQuery: CommittableJournalQuery[Long, Key, Event],
     combinatorMap: Ref[Map[Key, UIO[Combinators[State, Event, Reject]]]],
-    clock: Clock.Service
+    clock: Clock
   ): UIO[Entity[Key, Algebra, State, Event, Reject]] = ZIO.runtime.map { runtime =>
     val fn: Key => Algebra = { key: Key =>
       val errorHandler: Throwable => Reject = eventSourcedBehaviour.errorHandler

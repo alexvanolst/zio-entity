@@ -1,11 +1,9 @@
 package zio.entity.readside
 
-import zio.clock.Clock
-import zio.duration.durationInt
+import zio.{Clock, Queue, Schedule, Tag, Task, UIO, ULayer, ZIO, ZLayer, durationInt}
 import zio.entity.core.journal.{CommittableJournalQuery, JournalEntry}
 import zio.entity.data.Committable
 import zio.stream.ZStream
-import zio.{Has, Queue, Schedule, Tag, Task, UIO, ULayer, ZIO, ZLayer}
 
 trait ReadSideProcessor[Reject] {
   def readSideStream: ZStream[Any, Reject, KillSwitch]
@@ -22,7 +20,7 @@ object ReadSideProcessor {
   def readSideStream[Id: Tag, Event: Tag, Offset: Tag, Reject: Tag](
     readSideParams: ReadSideParams[Id, Event, Reject],
     errorHandler: Throwable => Reject,
-    clock: Clock.Service,
+    clock: Clock,
     readSideProcessing: ReadSideProcessing,
     journal: CommittableJournalQuery[Offset, Id, Event]
   ): ZStream[Any, Reject, KillSwitch] = {
@@ -32,12 +30,12 @@ object ReadSideProcessor {
       }
     }
     for {
-      (streams, processes) <- ZStream.fromEffect(buildStreamAndProcesses(sources))
+      (streams, processes) <- ZStream.fromZIO(buildStreamAndProcesses(sources))
       ks                   <- readSideProcessing.start(readSideParams.name, processes.toList).mapError(errorHandler)
       _ <- streams
         .map { stream =>
           stream
-            .mapMPar(readSideParams.parallelism) { element =>
+            .mapZIOPar(readSideParams.parallelism) { element =>
               val journalEntry = element.value
               val commit = element.commit
               val key = journalEntry.event.entityKey
@@ -45,8 +43,7 @@ object ReadSideProcessor {
               readSideParams.logic(key, event).retry(Schedule.fixed(1.second)) <* commit.mapError(errorHandler)
             }
         }
-        .flattenPar(sources.size)
-        .provide(Has(clock))
+        .flattenPar(sources.size).provideLayer(ZLayer.succeed(clock))
     } yield ks
   }
 
@@ -75,13 +72,13 @@ trait ReadSideProcessing {
 }
 
 object ReadSideProcessing {
-  def start(name: String, processes: List[ReadSideProcess]): ZStream[Has[ReadSideProcessing], Throwable, KillSwitch] =
-    ZStream.accessStream[Has[ReadSideProcessing]](_.get.start(name, processes))
+  def start(name: String, processes: List[ReadSideProcess]): ZStream[ReadSideProcessing, Throwable, KillSwitch] =
+    ZStream.environmentWithStream[ReadSideProcessing](_.get.start(name, processes))
 
   val memoryInner: ReadSideProcessing = (name: String, processes: List[ReadSideProcess]) => {
-    ZStream.fromEffect(for {
+    ZStream.fromZIO(for {
       tasksToShutdown <- ZIO.foreach(processes)(process => process.run)
     } yield KillSwitch(ZIO.foreach(tasksToShutdown)(_.shutdown).unit))
   }
-  val memory: ULayer[Has[ReadSideProcessing]] = ZLayer.succeed { memoryInner }
+  val memory: ULayer[ReadSideProcessing] = ZLayer.succeed { memoryInner }
 }

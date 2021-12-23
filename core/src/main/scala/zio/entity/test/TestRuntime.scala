@@ -1,16 +1,16 @@
 package zio.entity.test
 
-import zio.blocking.Blocking
-import zio.clock.Clock
-import zio.duration.durationInt
+
+import zio.{Chunk, Clock, Hub, RIO, Ref, Tag, Task, UIO, URIO, ZEnv, ZEnvironment, ZIO, ZLayer}
 import zio.entity.core._
+import zio.durationInt
 import zio.entity.core.journal.TestEventStore
 import zio.entity.data.{EntityProtocol, EventTag, Tagging, Versioned}
 import zio.entity.readside.{KillSwitch, ReadSideParams}
 import zio.entity.test.EntityProbe.KeyedProbeOperations
 import zio.stream.ZStream
-import zio.test.environment.TestClock
-import zio.{Chunk, Has, Hub, RIO, Ref, Tag, Task, UIO, URIO, ZIO, ZLayer}
+import zio.test.TestClock
+
 
 object TestEntityRuntime {
 
@@ -18,7 +18,7 @@ object TestEntityRuntime {
     trait TestReadSideProcessor[Reject] {
       def triggerReadSideProcessing(triggerTimes: Int): URIO[TestClock, Unit]
 
-      def triggerReadSideAndWaitFor(triggerTimes: Int, messagesToWaitFor: Int): ZIO[TestClock with Clock with Blocking, Reject, Unit]
+      def triggerReadSideAndWaitFor(triggerTimes: Int, messagesToWaitFor: Int): ZIO[TestClock with Clock with Any, Reject, Unit]
 
     }
   }
@@ -26,15 +26,11 @@ object TestEntityRuntime {
   trait TestEntity[Key, Algebra, State, Event, Reject] extends EntityProbe[Key, State, Event] with TestReadSideEntity[Key, Event, Reject]
 
   object TestEntity {
-    def probe[Key: Tag, Algebra: Tag, State: Tag, Event: Tag, Reject: Tag]: URIO[Has[
-      TestEntity[Key, Algebra, State, Event, Reject]
-    ], TestEntity[Key, Algebra, State, Event, Reject]] =
+    def probe[Key: Tag, Algebra: Tag, State: Tag, Event: Tag, Reject: Tag]: URIO[TestEntity[Key, Algebra, State, Event, Reject], TestEntity[Key, Algebra, State, Event, Reject]] =
       ZIO.service[TestEntity[Key, Algebra, State, Event, Reject]]
   }
 
-  def testEntityWithProbe[Key: Tag, Algebra: Tag, State: Tag, Event: Tag, Reject: Tag]: URIO[Has[Entity[Key, Algebra, State, Event, Reject]] with Has[
-    TestEntity[Key, Algebra, State, Event, Reject]
-  ], (Entity[Key, Algebra, State, Event, Reject], TestEntity[Key, Algebra, State, Event, Reject])] =
+  def testEntityWithProbe[Key: Tag, Algebra: Tag, State: Tag, Event: Tag, Reject: Tag]: URIO[Entity[Key, Algebra, State, Event, Reject] with TestEntity[Key, Algebra, State, Event, Reject], (Entity[Key, Algebra, State, Event, Reject], TestEntity[Key, Algebra, State, Event, Reject])] =
     ZIO.services[Entity[Key, Algebra, State, Event, Reject], TestEntity[Key, Algebra, State, Event, Reject]]
 
   def testEntity[Key: Tag, Algebra: Tag, State: Tag, Event: Tag, Reject: Tag](
@@ -42,13 +38,12 @@ object TestEntityRuntime {
     eventSourcedBehaviour: EventSourcedBehaviour[Algebra, State, Event, Reject]
   )(implicit
     protocol: EntityProtocol[Algebra, Reject]
-  ): ZLayer[Clock with Has[Stores[Key, Event, State] with TestEventStore[Key, Event]], Throwable, Has[Entity[Key, Algebra, State, Event, Reject]] with Has[
-    TestEntity[Key, Algebra, State, Event, Reject]
-  ]] = {
+  ): ZLayer[Clock with Stores[Key, Event, State] with TestEventStore[Key, Event], Throwable, Entity[Key, Algebra, State, Event, Reject] with TestEntity[Key, Algebra, State, Event, Reject]] = {
 
-    (for {
-      clock  <- ZIO.service[Clock.Service]
-      stores <- ZIO.service[Stores[Key, Event, State] with TestEventStore[Key, Event]]
+    val env = for {
+      clock  <- ZIO.service[Clock]
+      stores <- ZIO.service[Stores[Key, Event, State]]
+
       baseAlgebraConfig = AlgebraCombinatorConfig[Key, State, Event](
         stores.offsetStore,
         tagging,
@@ -68,8 +63,8 @@ object TestEntityRuntime {
       hub   <- Hub.unbounded[Unit]
       probedEntity = new Entity[Key, Algebra, State, Event, Reject] with TestEntity[Key, Algebra, State, Event, Reject] {
         override def apply(
-          key: Key
-        ): Algebra = entity.apply(key)
+                            key: Key
+                          ): Algebra = entity.apply(key)
 
         override def probeForKey(key: Key): KeyedProbeOperations[State, Event] = probe.probeForKey(key)
 
@@ -80,9 +75,9 @@ object TestEntityRuntime {
         private val consumed = ZStream.fromHub(hub)
 
         override def readSideStream(
-          readSideParams: ReadSideParams[Key, Event, Reject],
-          errorHandler: Throwable => Reject
-        ): ZStream[Any, Reject, KillSwitch] = for {
+                                     readSideParams: ReadSideParams[Key, Event, Reject],
+                                     errorHandler: Throwable => Reject
+                                   ): ZStream[Any, Reject, KillSwitch] = for {
           ks <- entity.readSideStream(readSideParams, errorHandler)
         } yield ks
 
@@ -90,16 +85,19 @@ object TestEntityRuntime {
         override def triggerReadSideProcessing(triggerTimes: Int): URIO[TestClock, Unit] = TestClock.adjust((triggerTimes * 50).millis)
 
         override def triggerReadSideAndWaitFor(
-          readSideParams: ReadSideParams[Key, Event, Reject],
-          errorHandler: Throwable => Reject
-        )(triggerTimes: Int, messagesToWaitFor: Int): ZIO[TestClock with Clock with Blocking, Reject, Unit] = for {
+                                                readSideParams: ReadSideParams[Key, Event, Reject],
+                                                errorHandler: Throwable => Reject
+                                              )(triggerTimes: Int, messagesToWaitFor: Int): ZIO[TestClock with Clock with Any, Reject, Unit] = for {
           fiber <- readSideStream(readSideParams, errorHandler).take(messagesToWaitFor).runDrain.fork
           _     <- triggerReadSideProcessing(triggerTimes)
           _     <- fiber.join
         } yield ()
 
       }
-    } yield Has[Entity[Key, Algebra, State, Event, Reject]](probedEntity) ++ Has[TestEntity[Key, Algebra, State, Event, Reject]](probedEntity)).toLayerMany
+    } yield ZEnvironment.apply[Entity[Key, Algebra, State, Event, Reject], TestEntity[Key, Algebra, State, Event, Reject]](probedEntity, probedEntity)
+//yield Has[Entity[Key, Algebra, State, Event, Reject]](probedEntity) ++ Has[TestEntity[Key, Algebra, State, Event, Reject]](probedEntity)).toLayerMany
+    env.toLayerEnvironment
+
   }
 }
 
@@ -119,7 +117,7 @@ trait TestReadSideEntity[Key, Event, Reject] {
   def triggerReadSideAndWaitFor(
     readSideParams: ReadSideParams[Key, Event, Reject],
     errorHandler: Throwable => Reject
-  )(triggerTimes: Int, messagesToWaitFor: Int): ZIO[TestClock with Clock with Blocking, Reject, Unit]
+  )(triggerTimes: Int, messagesToWaitFor: Int): ZIO[TestClock with Clock with Any, Reject, Unit]
 
 }
 
@@ -134,13 +132,14 @@ object EntityProbe {
 
   def make[Key: Tag, State: Tag, Event: Tag](
     eventHandler: Fold[State, Event]
-  ): ZIO[Has[Stores[Key, Event, State] with TestEventStore[Key, Event]], Nothing, EntityProbe[
+  ): ZIO[Stores[Key, Event, State] with TestEventStore[Key, Event], Nothing, EntityProbe[
     Key,
     State,
     Event
   ]] =
     for {
-      stores <- ZIO.service[Stores[Key, Event, State] with TestEventStore[Key, Event]]
+      stores <- ZIO.service[Stores[Key, Event, State]]
+      testEventStore <- ZIO.service[TestEventStore[Key, Event]]
     } yield new EntityProbe[Key, State, Event] {
 
       def probeForKey(key: Key): KeyedProbeOperations[State, Event] = KeyedProbeOperations(
@@ -151,8 +150,8 @@ object EntityProbe {
       )
       private val stateFromSnapshot: Key => Task[Option[Versioned[State]]] = key => stores.snapshotting.load(key)
       private val state: Key => Task[State] = key => events(key).flatMap(list => eventHandler.run(Chunk.fromIterable(list)))
-      private val events: Key => Task[List[Event]] = key => stores.getAppendedEvent(key)
-      private val eventStream: Key => ZStream[Any, Throwable, Event] = key => stores.getAppendedStream(key)
+      private val events: Key => Task[List[Event]] = key => testEventStore.getAppendedEvent(key)
+      private val eventStream: Key => ZStream[Any, Throwable, Event] = key => testEventStore.getAppendedStream(key)
 
       def eventsFromReadSide(tag: EventTag): RIO[Clock, List[Event]] =
         stores.journalStore.currentEventsByTag(tag, None).runCollect.map(_.toList.map(_.event.payload))

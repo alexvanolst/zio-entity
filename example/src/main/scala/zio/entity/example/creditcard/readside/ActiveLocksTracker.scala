@@ -6,7 +6,7 @@ import zio.entity.example.ledger.{LedgerEntity, LedgerError, UnknownLedgerError}
 import zio.entity.example.storage.ExpiringStorage
 import zio.entity.example.{LedgerEvent, LedgerId, LedgerLockAdded, LedgerLockReleased, LockId}
 import zio.entity.readside.ReadSideParams
-import zio.{Has, IO, UIO, ZLayer}
+import zio.{IO, UIO, ZLayer}
 
 import java.time.Instant
 
@@ -18,7 +18,7 @@ object ActiveLocksTracker {
 
   case class LockKey(ledgerId: LedgerId, lockId: LockId)
   case class LockValue(expiredAt: Instant)
-  val live: ZLayer[Has[ExpiringStorage[LockKey, LockValue]] with Has[LedgerEntity], Nothing, Has[ActiveLocksTracker]] =
+  val live: ZLayer[ExpiringStorage[LockKey, LockValue] with LedgerEntity, Nothing, ActiveLocksTracker] =
     ZLayer.fromServices[ExpiringStorage[LockKey, LockValue], LedgerEntity, ActiveLocksTracker] { (storage, ledgerEntity) =>
       val logic: (LedgerId, LedgerEvent) => IO[LedgerError, Unit] = (id, event) =>
         {

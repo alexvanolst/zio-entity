@@ -5,7 +5,7 @@ import akka.cluster.sharding.ShardRegion
 import izumi.reflect.Tag
 import zio.entity.core._
 import zio.entity.data.{CommandInvocation, CommandResult, EntityProtocol, Invocation}
-import zio.{Chunk, Has, Runtime, UIO, ULayer, ZIO, ZLayer}
+import zio.{Chunk, Runtime, UIO, ULayer, ZIO, ZLayer}
 
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets

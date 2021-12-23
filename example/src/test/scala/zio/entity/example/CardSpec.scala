@@ -1,9 +1,9 @@
 package zio.entity.example
 
-import zio.clock.Clock
-import zio.duration.durationInt
+import zio.{Clock, UIO, ZEnv, ZIO, ZLayer, durationInt}
 import zio.entity.core.{Entity, EventSourcedBehaviour}
 import zio.entity.example.Amount.Currency
+import zio.entity.example.CardSpec.Environment
 import zio.entity.example.creditcard._
 import zio.entity.example.creditcard.readside.ActiveLocksTracker
 import zio.entity.example.creditcard.readside.ActiveLocksTracker.{LockKey, LockValue}
@@ -13,21 +13,17 @@ import zio.entity.example.scheduler.{AuthorizationReleaser, FixedPollAuthorizati
 import zio.entity.example.storage.MemoryExpiringStorage
 import zio.entity.test.TestEntityRuntime.testEntity
 import zio.entity.test.{TestEntityRuntime, TestMemoryStores}
-import zio.test.environment.{TestClock, TestEnvironment}
-import zio.test.{assertTrue, DefaultRunnableSpec, TestAspect}
-import zio.{Has, UIO, ZIO, ZLayer}
+import zio.test.{TestAspect, TestClock, TestEnvironment, ZIOSpec, ZIOSpecDefault, assertTrue}
 
 import java.util.UUID
 
-object CardSpec extends DefaultRunnableSpec {
+object CardSpec extends ZIOSpec[ ZEnv with Entity[CardId, Card, CardState, CardEvent, CardError] with TestEntityRuntime.TestEntity[CardId, Card, CardState, CardEvent, CardError] with Entity[LedgerId, Ledger, LedgerState, LedgerEvent, LedgerError] with TestEntityRuntime.TestEntity[LedgerId, Ledger, LedgerState, LedgerEvent, LedgerError] with CardOps with ActiveLocksTracker with AuthorizationReleaser] {
   import CardEntity.cardProtocol
   import LedgerEntity.ledgerProtocol
 
   private val expirationDuration = 10.seconds
   private val polling = 500.millis
-  private val ledger: ZLayer[Clock, Throwable, Has[Entity[LedgerId, Ledger, LedgerState, LedgerEvent, LedgerError]] with Has[
-    TestEntityRuntime.TestEntity[LedgerId, Ledger, LedgerState, LedgerEvent, LedgerError]
-  ]] =
+  private val ledger: ZLayer[Clock, Throwable, Entity[LedgerId, Ledger, LedgerState, LedgerEvent, LedgerError] with TestEntityRuntime.TestEntity[LedgerId, Ledger, LedgerState, LedgerEvent, LedgerError]] =
     Clock.any and (Clock.any to TestMemoryStores.make[LedgerId, LedgerEvent, LedgerState](polling)) to
     testEntity(
       LedgerEntity.tagging,
@@ -38,22 +34,22 @@ object CardSpec extends DefaultRunnableSpec {
       )
     )
 
-  private val card: ZLayer[Clock, Throwable, Has[Entity[CardId, Card, CardState, CardEvent, CardError]] with Has[
-    TestEntityRuntime.TestEntity[CardId, Card, CardState, CardEvent, CardError]
-  ]] =
+  private val card: ZLayer[Clock, Throwable, Entity[CardId, Card, CardState, CardEvent, CardError] with TestEntityRuntime.TestEntity[CardId, Card, CardState, CardEvent, CardError]] =
     Clock.any and TestMemoryStores.make[CardId, CardEvent, CardState](polling) to
     testEntity(
       CardEntity.tagging,
       EventSourcedBehaviour[Card, CardState, CardEvent, CardError](new CardCommandHandler(_), CardEntity.eventHandlerLogic, _ => UnknownCardError)
     )
+
   private val expiringStorage = MemoryExpiringStorage.make[LockKey, LockValue]
-  private val lockTracker: ZLayer[Clock, Throwable, Has[ActiveLocksTracker]] = expiringStorage ++ ledger >>> ActiveLocksTracker.live
+  private val lockTracker: ZLayer[Clock, Throwable, ActiveLocksTracker] = expiringStorage ++ ledger >>> ActiveLocksTracker.live
 
-  private val authReleaser: ZLayer[Clock, Throwable, Has[AuthorizationReleaser]] =
+  private val authReleaser: ZLayer[Clock, Throwable, AuthorizationReleaser] =
     Clock.any ++ expiringStorage ++ ledger >>> FixedPollAuthorizationReleaser.make(expirationDuration)
-  private val layer = ((card ++ ledger) >+> CardOps.live) ++ lockTracker ++ authReleaser
 
-  private val canMakeCardTransaction = testM("Can make card transaction") {
+  override val layer = zio.ZEnv.live  >+> ((card ++ ledger) >+> CardOps.live) ++ lockTracker ++ authReleaser
+
+  private val canMakeCardTransaction = test("Can make card transaction") {
     val ledgerId = LedgerId(Some(UUID.randomUUID()))
     for {
       ledgerEntity  <- LedgerEntity(ledgerId)
@@ -65,7 +61,7 @@ object CardSpec extends DefaultRunnableSpec {
     } yield assertTrue(result && result2) && assertTrue(!resultFailing)
   }
 
-  private val canUseAuth = testM("Can use authorization transactions") {
+  private val canUseAuth = test("Can use authorization transactions") {
     val ledgerId = LedgerId(Some(UUID.randomUUID()))
     for {
       ledgerEntity     <- LedgerEntity(ledgerId)
@@ -80,7 +76,7 @@ object CardSpec extends DefaultRunnableSpec {
     )
   }
 
-  private val canExpireAuth = testM("Can expire authorization locks") {
+  private val canExpireAuth = test("Can expire authorization locks") {
     val ledgerId = LedgerId(Some(UUID.randomUUID()))
     for {
       _            <- JobRunners.startJobs

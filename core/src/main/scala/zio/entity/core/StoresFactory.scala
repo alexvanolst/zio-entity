@@ -1,11 +1,11 @@
 package zio.entity.core
 
-import zio.clock.Clock
-import zio.duration.Duration
+import zio.Clock
+import zio.Duration
 import zio.entity.core.journal.{CommittableJournalStore, EventJournal, JournalQuery, MemoryEventJournal}
 import zio.entity.core.snapshot.{KeyValueStore, MemoryKeyValueStore, Snapshotting}
 import zio.entity.data.{TagConsumer, Versioned}
-import zio.{Has, IO, Tag, ZIO, ZLayer}
+import zio.{IO, Tag, ZIO, ZLayer}
 
 trait Stores[Key, Event, State] {
   def snapshotting: Snapshotting[Key, State]
@@ -29,9 +29,9 @@ object MemoryStores {
   def make[Key: Tag, Event: Tag, State: Tag](
     pollingInterval: Duration,
     snapshotEvery: Int
-  ): ZLayer[Clock, Nothing, Has[Stores[Key, Event, State]]] =
+  ): ZLayer[Clock, Nothing, Stores[Key, Event, State]] =
     (for {
-      clock               <- ZIO.service[Clock.Service]
+      clock               <- ZIO.service[Clock]
       snapshotStore       <- MemoryKeyValueStore.make[Key, Versioned[State]]
       journalStore        <- MemoryEventJournal.make[Key, Event](pollingInterval).provideLayer(ZLayer.succeed(clock))
       offsetStore         <- MemoryKeyValueStore.make[Key, Long]

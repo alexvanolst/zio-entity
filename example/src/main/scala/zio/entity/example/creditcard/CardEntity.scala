@@ -6,7 +6,7 @@ import zio.entity.data.Tagging.Const
 import zio.entity.data.{EntityProtocol, EventTag, Tagging}
 import zio.entity.example.{CardClosed, CardEvent, CardOpened, CardState, Closed, Created, LedgerId, Opened}
 import zio.entity.macros.RpcMacro
-import zio.{Has, IO, UIO, ZIO}
+import zio.{IO, UIO, ZIO}
 
 import java.util.UUID
 
@@ -56,7 +56,7 @@ case class AuthId(value: String) extends AnyVal
 object CardEntity {
   type CardEntity = Entity[CardId, Card, CardState, CardEvent, CardError]
 
-  def apply(id: CardId): ZIO[Has[CardEntity], Nothing, Card] = ZIO.access(_.get.apply(id))
+  def apply(id: CardId): ZIO[CardEntity, Nothing, Card] = ZIO.access(_.get.apply(id))
 
   val tagging: Const[CardId] = Tagging.const[CardId](EventTag("Card"))
 

@@ -2,7 +2,7 @@ package zio.entity.core
 
 import zio.entity.readside.{KillSwitch, ReadSideParams}
 import zio.stream.ZStream
-import zio.{Has, IO, Promise, Ref, Tag, Task, UIO, URIO, ZIO}
+import zio.{IO, Promise, Ref, Tag, Task, UIO, URIO, ZIO}
 
 trait Entity[Key, Algebra, State, Event, Reject] {
 
@@ -30,6 +30,6 @@ trait Entity[Key, Algebra, State, Event, Reject] {
 
 object Entity {
   def entity[Key: Tag, Algebra: Tag, State: Tag, Event: Tag, Reject: Tag]
-    : URIO[Has[Entity[Key, Algebra, State, Event, Reject]], Entity[Key, Algebra, State, Event, Reject]] =
+    : URIO[Entity[Key, Algebra, State, Event, Reject], Entity[Key, Algebra, State, Event, Reject]] =
     ZIO.service[Entity[Key, Algebra, State, Event, Reject]]
 }

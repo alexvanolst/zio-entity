@@ -26,8 +26,8 @@ final class ActorReadSideProcessing private (system: ActorSystem, settings: Read
     * @param processes - list of processes to distribute
     */
   def start(name: String, processes: List[ReadSideProcess]): ZStream[Any, Throwable, KillSwitch] = {
-    ZStream.fromEffect(ZIO.runtime[Any].flatMap { runtime =>
-      ZIO.effect {
+    ZStream.fromZIO(ZIO.runtime[Any].flatMap { runtime =>
+      ZIO.attempt {
         val opts = BackoffOpts
           .onFailure(
             ReadSideWorkerActor.props(i => processes.apply(i), name)(runtime),

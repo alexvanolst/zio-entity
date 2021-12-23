@@ -7,17 +7,16 @@ import zio.entity.core.snapshot.KeyValueStore
 import zio.entity.postgres.example.{AValue, Key}
 import zio.entity.serializer.protobuf.ProtobufCodecs._
 import zio.test.Assertion.equalTo
-import zio.test.environment.TestEnvironment
-import zio.test.{assert, DefaultRunnableSpec, ZSpec}
-import zio.{Has, Task, UIO, ZIO, ZLayer, ZManaged}
+import zio.test.{TestEnvironment, ZIOSpec, ZIOSpecDefault, ZSpec, assert}
+import zio.{Task, UIO, ZIO, ZLayer, ZManaged}
 
-object PostgresqlKeyValueStoreSpec extends DefaultRunnableSpec {
+object PostgresqlKeyValueStoreSpec extends ZIOSpec[KeyValueStore[Key, AValue]] {
 
-  private val layer: ZLayer[Any, Throwable, Has[KeyValueStore[Key, AValue]]] =
+  override val layer: ZLayer[Any, Throwable, KeyValueStore[Key, AValue]] =
     PostgresqlTestContainerManaged.transact to PostgresqlKeyValueStore.make[Key, AValue]("test")
 
   override def spec: ZSpec[TestEnvironment, Any] = suite("A postgres key value store")(
-    testM("Can store and retrieve values from db") {
+    test("Can store and retrieve values from db") {
       (for {
         keyValueStore     <- ZIO.service[KeyValueStore[Key, AValue]]
         _                 <- keyValueStore.setValue(Key("key2"), AValue(5, "example5"))
@@ -40,12 +39,12 @@ object PostgresqlKeyValueStoreSpec extends DefaultRunnableSpec {
 
 object PostgresqlTestContainerManaged {
 
-  val containerManaged: ZManaged[Any, Throwable, containers.PostgreSQLContainer[_]] = ZManaged.make {
+  val containerManaged: ZManaged[Any, Throwable, containers.PostgreSQLContainer[_]] = ZManaged.acquireReleaseWith {
     val container = new PostgreSQLContainer("postgres:11.12")
-    ZIO.effect(container.start()).as(container)
+    ZIO.attempt(container.start()).as(container)
   } { el => UIO.succeed(el.stop()) }
 
-  val transact: ZLayer[Any, Throwable, Has[Transactor[Task]]] = {
+  val transact: ZLayer[Any, Throwable, Transactor[Task]] = {
     (for {
       container <- containerManaged
       transact  <- PostgresTransact.transact(container.getJdbcUrl, container.getUsername, container.getPassword)

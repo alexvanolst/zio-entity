@@ -2,10 +2,10 @@ package zio.entity.postgres.journal
 
 import doobie.{Update, Update0}
 import doobie.implicits.{toSqlInterpolator, _}
-import zio.clock.Clock
-import zio.duration.Duration
+import zio.Clock
+import zio.Duration
 import zio.entity.core.journal.{EventJournal, JournalEntry, JournalQuery}
-import zio.entity.data.{EntityEvent, EventTag}
+import zio.entity.data.{EntityEvent, EventTag, Tagging}
 import zio.interop.catz._
 import zio.stream.ZStream
 import zio.stream.interop.fs2z._
@@ -17,9 +17,9 @@ import zio._
 import zio.entity.serializer.{SchemaCodec, SchemaEncoder}
 import zio.interop.catz._
 
-class PostgresEventJournal[Key: SchemaCodec, Event: SchemaCodec](
+class PostgresEventJournal[Key: SchemaCodec: Tag, Event: SchemaCodec](
   pollingInterval: Duration,
-  clock: Clock.Service,
+  clock: Clock,
   tableName: String,
   transactor: Transactor[Task]
 ) extends EventJournal[Key, Event]
@@ -27,9 +27,9 @@ class PostgresEventJournal[Key: SchemaCodec, Event: SchemaCodec](
   // table per entity
 
   case class Record(key: Array[Byte], seqNr: Long, event: Array[Byte], tags: List[String])
-  override def append(key: Key, offset: Long, events: NonEmptyChunk[Event]): RIO[HasTagging, Unit] = {
+  override def append(key: Key, offset: Long, events: NonEmptyChunk[Event]): RIO[Tagging[Key], Unit] = {
     // bulk insert of elements
-    ZIO.accessM[HasTagging] { tagging =>
+    ZIO.serviceWith[Tagging[Key]] { tagging =>
       val tags = tagging.tag(key).map(_.value).toList
       val transformedEvents: List[Record] = events.zipWithIndex.map { case (el, index) =>
         Record(SchemaEncoder[Key].encode(key).toArray, offset + index, SchemaCodec[Event].encode(el).toArray, tags)
@@ -56,18 +56,18 @@ class PostgresEventJournal[Key: SchemaCodec, Event: SchemaCodec](
       .stream
       .transact(transactor)
       .toZStream()
-      .mapM { case (_, _, recordOffset, event, _) =>
+      .mapZIO { case (_, _, recordOffset, event, _) =>
         val eventZio: Task[Event] = ZIO.fromTry(valueDecoder.decode(Chunk.fromArray(event)))
         eventZio.map(event => EntityEvent(key, recordOffset, event))
       }
   }
 
   override def eventsByTag(tag: EventTag, offset: Option[Long]): ZStream[Any, Throwable, JournalEntry[Long, Key, Event]] = (for {
-    lastOffsetProcessed <- ZStream.fromEffect(Ref.make[Option[Long]](None))
+    lastOffsetProcessed <- ZStream.fromZIO(Ref.make[Option[Long]](None))
     _                   <- ZStream.fromSchedule(Schedule.fixed(pollingInterval))
     lastOffset <- ZStream
-      .fromEffect(lastOffsetProcessed.get)
-    journalEntry <- currentEventsByTag(tag, lastOffset.orElse(offset)).mapM { event =>
+      .fromZIO(lastOffsetProcessed.get)
+    journalEntry <- currentEventsByTag(tag, lastOffset.orElse(offset)).mapZIO { event =>
       lastOffsetProcessed.set(Some(event.offset)).as(event)
     }
   } yield journalEntry).provideLayer(ZLayer.succeed(clock))
@@ -84,7 +84,7 @@ class PostgresEventJournal[Key: SchemaCodec, Event: SchemaCodec](
       .stream
       .transact(transactor)
       .toZStream()
-      .mapM { case (id, keyBytes, recordOffset, eventBytes, tags) =>
+      .mapZIO { case (id, keyBytes, recordOffset, eventBytes, tags) =>
         for {
           key   <- ZIO.fromTry(keyDecoder.decode(Chunk.fromArray(keyBytes)))
           event <- ZIO.fromTry(valueDecoder.decode(Chunk.fromArray(eventBytes)))
@@ -129,10 +129,10 @@ object PostgresqlEventJournal {
   def make[Key: SchemaCodec: Tag, Event: SchemaCodec: Tag](
     tableName: String,
     pollingInterval: Duration
-  ): ZLayer[Has[Transactor[Task]] with Clock, Throwable, Has[EventJournalStore[Key, Event]]] = {
+  ): ZLayer[Transactor[Task] with Clock, Throwable, EventJournalStore[Key, Event]] = {
     for {
       xa    <- ZIO.service[Transactor[Task]]
-      clock <- ZIO.service[Clock.Service]
+      clock <- ZIO.service[Clock]
       _     <- createTable(tableName, xa)
     } yield new PostgresEventJournal[Key, Event](pollingInterval, clock, tableName, xa)
   }.toLayer
