@@ -16,7 +16,7 @@ object PostgresqlEventJournalSpec extends ZIOSpec[EventJournalStore[Key, AnEvent
   private implicit val eventCodec = codecSealed[AnEvent, AnEventMessage]
 
   override val layer: ZLayer[Any, Throwable, EventJournalStore[Key, AnEvent]] =
-    (ZEnv.live and PostgresqlTestContainerManaged.transact) to PostgresqlEventJournal.make[Key, AnEvent]("testevent", 100.millis)
+    (ZEnv.live >+> PostgresqlTestContainerManaged.transact) to PostgresqlEventJournal.make[Key, AnEvent]("testevent", 100.millis)
 
   private val tagging = ZLayer.succeed(Tagging.const[Key](EventTag("ok")))
   private val secondTagging = ZLayer.succeed(Tagging.const[Key](EventTag("second")))

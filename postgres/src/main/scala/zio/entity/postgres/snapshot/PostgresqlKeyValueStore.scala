@@ -1,6 +1,5 @@
 package zio.entity.postgres.snapshot
 
-import cats.effect.Blocker
 import doobie.{Fragment, Update0}
 import doobie.hikari.HikariTransactor
 import doobie.implicits.{toSqlInterpolator, _}
@@ -70,18 +69,18 @@ object PostgresqlKeyValueStore {
 
 object PostgresTransact {
 
-  def transact(url: String, user: String, password: String): ZManaged[Any, Throwable, Transactor[Task]] = {
+  def transact(url: String, user: String, password: String): ZManaged[ZEnv, Throwable, Transactor[Task]] = {
     for {
-      runtime <- ZIO.runtime[Any].toManaged
+      runtime <- ZIO.runtime[ZEnv].toManaged
+      instance = asyncRuntimeInstance(runtime)
       hikari <- HikariTransactor
         .newHikariTransactor[Task](
           "org.postgresql.Driver",
           url,
           user,
           password,
-          runtime.platform.executor.asExecutionContext,
-          Blocker.liftExecutionContext(runtime.platform.executor.asExecutionContext)
-        )
+          runtime.runtimeConfig.executor.asExecutionContext
+        )(instance)
         .toManagedZIO
     } yield hikari
   }

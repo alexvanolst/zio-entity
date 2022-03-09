@@ -5,8 +5,7 @@ import akka.cluster.sharding.{ClusterSharding, ShardRegion}
 import akka.pattern.ask
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
-import izumi.reflect.Tag
-import zio.Clock
+import zio.{Chunk, Clock, IO, Managed, Tag, Task, ZIO, ZLayer}
 import zio.entity.core._
 import zio.entity.core.journal.CommittableJournalQuery
 import zio.entity.data.{CommandInvocation, CommandResult, EntityProtocol, Tagging}
@@ -14,7 +13,6 @@ import zio.entity.readside.{KillSwitch, ReadSideParams, ReadSideProcessor}
 import zio.entity.runtime.akka.readside.{ActorReadSideProcessing, ReadSideSettings}
 import zio.entity.runtime.akka.serialization.Message
 import zio.stream.ZStream
-import zio.{Chunk, IO, Managed, Task, ZIO, ZLayer}
 
 import scala.concurrent.Future
 

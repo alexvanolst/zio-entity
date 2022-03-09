@@ -1,9 +1,9 @@
 package zio.entity.readside
 
-import zio.IO
+import zio.{IO, Tag}
 import zio.entity.data.{ConsumerId, Tagging}
 
-case class ReadSideParams[Id, Event, Reject](
+case class ReadSideParams[Id : Tag, Event, Reject](
   name: String,
   consumerId: ConsumerId,
   tagging: Tagging[Id],

@@ -5,7 +5,7 @@ lazy val root = (project in file("."))
     inThisBuild(
       List(
         organization := "zio",
-        scalaVersion := "2.13.7",
+        scalaVersion := "2.13.8",
         version := "0.1.3-SNAPSHOT"
       )
     ),
@@ -16,7 +16,7 @@ lazy val root = (project in file("."))
 lazy val noPublishSettings = Seq(publish := (()), publishLocal := (()), publishArtifact := false)
 
 val testDeps = Seq(
-  "org.scalatest" %% "scalatest" % "3.2.10" % Test,
+  "org.scalatest" %% "scalatest" % "3.2.11" % Test,
   "dev.zio" %% "zio-test-sbt" % zioVersion % Test,
   "dev.zio" %% "zio-test-magnolia" % zioVersion % Test
 )
@@ -26,7 +26,7 @@ val allDeps = Seq(
   "dev.zio" %% "zio-streams" % zioVersion,
   "dev.zio" %% "zio-test" % zioVersion,
   "io.suzaku" %% "boopickle" % "1.4.0",
-  "org.scala-lang" % "scala-reflect" % "2.13.7",
+  "org.scala-lang" % "scala-reflect" % "2.13.8",
   "com.thesamet.scalapb" %% "scalapb-runtime" % scalapb.compiler.Version.scalapbVersion
 ) ++ testDeps
 
@@ -35,12 +35,12 @@ val exampleDeps = Seq(
 ) ++ testDeps
 
 val postgresDeps = Seq(
-  "org.tpolecat" %% "doobie-core" % "0.13.4",
-  "org.tpolecat" %% "doobie-hikari" % "0.13.4",
-  "org.tpolecat" %% "doobie-postgres" % "0.13.4",
-  "dev.zio" %% "zio-interop-cats" % zioInteropCatsVersion,
+  "org.tpolecat" %% "doobie-core" % "1.0.0-RC2",
+  "org.tpolecat" %% "doobie-hikari" % "1.0.0-RC2",
+  "org.tpolecat" %% "doobie-postgres" % "1.0.0-RC2",
+  "dev.zio" %% "zio-interop-cats" % "3.3.0-RC2",
   "ch.qos.logback" % "logback-classic" % "1.2.10" % Test,
-  "org.testcontainers" % "postgresql" % "1.16.2" % Test
+  "org.testcontainers" % "postgresql" % "1.16.3" % Test
 ) ++ testDeps
 
 val akkaDeps = Seq(
